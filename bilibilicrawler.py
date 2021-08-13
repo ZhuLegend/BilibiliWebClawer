@@ -1,3 +1,7 @@
+"""
+b站爬虫类定义于此，目前完成了使用cookie登录，爬取指定uid全部粉丝的相关信息（uid，昵称及个人简介）
+"""
+
 import os
 import pickle
 import sqlite3
@@ -9,7 +13,7 @@ from tqdm import tqdm
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import ElementNotInteractableException
-from selenium.webdriver.support import expected_conditions as ec
+from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.wait import WebDriverWait
 
@@ -22,11 +26,15 @@ class BilibiliCrawler:
         self.cookies = self.read_cookies()
 
     def get_driver(self):
+        """
+        本地已有cookie，则启动无头浏览器，无cookie，则正常启动等待用户输入账户密码获取cookie
+        :return: webdriver
+        """
         if self.is_headless:
             chrome_options = Options()
             chrome_options.add_argument('--headless')
             chrome_options.add_argument('--disable-gpu')
-            return webdriver.Chrome(executable_path='./chromedriver',options=chrome_options)
+            return webdriver.Chrome(executable_path='./chromedriver', options=chrome_options)
         else:
             return webdriver.Chrome(executable_path='./chromedriver')
 
@@ -46,28 +54,28 @@ class BilibiliCrawler:
             tbar = tqdm(range(int(page)))
             for i in tbar:
                 tbar.set_description("正在遍历粉丝列表，目前在第%s页" % (i + 1), refresh=False)
-                if i != page:
-                    fans_elements = self.driver.find_elements_by_xpath(
-                        '//*[@id="page-follows"]/div/div[2]/div[2]/div[2]/ul[1]/*')
-                    if len(fans_elements):
-                        for fans_element in fans_elements:
-                            fan_uid_element = fans_element.find_element_by_class_name('cover')
-                            fan_uid = re.search(r'.com/[0-9]+', fan_uid_element.get_attribute('href')).group()[5:]
-                            fan_info = fans_element.text.split('\n')
-                            fan_info = fan_info[:2]
-                            fan_info.append(fan_uid)
-                            fans_info.append(fan_info)
-                        # print(fans_info)
-                    else:
-                        print("Can't find elements")
-                        break
+                fans_elements = self.driver.find_elements_by_xpath(
+                    '//*[@id="page-follows"]/div/div[2]/div[2]/div[2]/ul[1]/*')
+                if len(fans_elements):
+                    for fans_element in fans_elements:
+                        fan_uid_element = fans_element.find_element_by_class_name('cover')
+                        fan_uid = re.search(r'.com/[0-9]+', fan_uid_element.get_attribute('href')).group()[5:]
+                        fan_info = fans_element.text.split('\n')
+                        fan_info = fan_info[:2]
+                        fan_info.append(fan_uid)
+                        fans_info.append(fan_info)
+                    # print(fans_info)
+                else:
+                    print("无法找到粉丝信息，可能为网络问题，请重试")
+                    break
+                if i != (int(page) - 1):
                     next_page_element = self.driver.find_element_by_xpath('//*[@id="page-follows"]/div/div[2]/div[\
                                                                           2]/div[2]/ul[2]/li[ @title="下一页"]')
                     next_page_element.click()
-                    time.sleep(1)
+                time.sleep(2)
         except ElementNotInteractableException:
             time.sleep(1)
-            print("Get fans_info success")
+            print("获取粉丝信息成功")
         tbar.close()
         self.driver.close()
         return fans_info
@@ -98,7 +106,7 @@ class BilibiliCrawler:
 
             conn.commit()
         conn.close()
-        print("save fans_info success")
+        print("保存粉丝信息成功")
 
     def get_cookies(self):
         """
@@ -123,6 +131,7 @@ class BilibiliCrawler:
                 output_path = open('cookies.pickle', 'wb')
                 pickle.dump(cookies, output_path)
                 output_path.close()
+                print("获取cookie成功")
                 return cookies
 
     def read_cookies(self):
@@ -135,6 +144,8 @@ class BilibiliCrawler:
             cookies = pickle.load(read_path)
         else:
             cookies = self.get_cookies()
+
+        print("载入cookie成功")
         return cookies
 
     def login_by_cookies(self):
@@ -142,8 +153,7 @@ class BilibiliCrawler:
         使用cookie登录b站，如cookie不存在，则要求登录获取cookie
         :return: None
         """
-        cookies = self.read_cookies()
-
+        cookies = self.cookies
         self.driver.get("https://www.bilibili.com")
         for cookie in cookies:
             self.driver.add_cookie({
@@ -153,5 +163,6 @@ class BilibiliCrawler:
                 "path": '/',
                 "expires": None
             })
-        # time.sleep(0.5)
+        time.sleep(0.5)
         self.driver.get("https://www.bilibili.com")
+        print("登录成功！")
